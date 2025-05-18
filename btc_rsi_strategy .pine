@@ -1,0 +1,16 @@
+// === 倉位控管：市值比重不得超過 5% ===
+currentPositionPct = math.abs(strategy.position_size * close / strategy.equity)
+
+// === 多單補倉條件 ===
+longAddCondition = (strategy.position_size > 0) and (not longAdded) and (close < longEntryPrice - reentryGap) and (currentPositionPct < 0.05)
+if (longAddCondition)
+    strategy.order("Long-Add", strategy.long, qty=strategy.equity * 0.02 / close)
+    longEntryPrice := (longEntryPrice * 3 + close * 2) / 5
+    longAdded := true
+
+// === 空單補倉條件 ===
+shortAddCondition = (strategy.position_size < 0) and (not shortAdded) and (close > shortEntryPrice + reentryGap) and (currentPositionPct < 0.05)
+if (shortAddCondition)
+    strategy.order("Short-Add", strategy.short, qty=strategy.equity * 0.02 / close)
+    shortEntryPrice := (shortEntryPrice * 3 + close * 2) / 5
+    shortAdded := true

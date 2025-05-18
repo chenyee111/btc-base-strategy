@@ -1,0 +1,86 @@
+//@version=6
+strategy("📊 強化版 BOLL 策略 (固定開倉 + 補倉 + 資金控管)", overlay=true, default_qty_type=strategy.fixed)
+
+// === 參數設定 === //
+boll_length = input.int(20, title="BOLL 期間")
+boll_mult = input.float(2.0, title="BOLL 倍數")
+take_profit = input.int(300, title="固定停利點數")
+trail_offset = input.int(200, title="追蹤止損點數")
+position_risk = input.float(0.05, title="最大總風險 (資金%)")  // 5%
+entry_risk = 0.03  // 首倉風險 3%
+add_risk = 0.02     // 加碼風險 2%
+
+// === BOLL 計算 === //
+basis = ta.sma(close, boll_length)
+deviation = boll_mult * ta.stdev(close, boll_length)
+upper = basis + deviation
+lower = basis - deviation
+
+// === 持倉追蹤 === //
+var float avg_entry = na
+var int entry_count = 0
+var float capital = strategy.equity
+max_risk_value = position_risk * capital
+
+// === 多單條件 === //
+long_condition = close < lower
+can_add_long = close < avg_entry - 100 and entry_count == 1
+
+// === 空單條件 === //
+short_condition = close > upper
+can_add_short = close > avg_entry + 100 and entry_count == 1
+
+// === 開倉金額計算 === //
+entry_qty = (entry_risk * capital) / close
+add_qty = (add_risk * capital) / close
+
+// === 多單進場 === //
+if (long_condition and strategy.position_size == 0)
+    strategy.entry("Long", strategy.long, qty=entry_qty)
+    avg_entry := close
+    entry_count := 1
+    alert("📢 多單進場 - 價格跌破下軌", alert.freq_once_per_bar)
+
+if (can_add_long and strategy.position_size > 0 and entry_count == 1)
+    strategy.entry("LongAdd", strategy.long, qty=add_qty)
+    avg_entry := (avg_entry * entry_count + close) / (entry_count + 1)
+    entry_count := 2
+    alert("📢 多單加碼", alert.freq_once_per_bar)
+
+// === 空單進場 === //
+if (short_condition and strategy.position_size == 0)
+    strategy.entry("Short", strategy.short, qty=entry_qty)
+    avg_entry := close
+    entry_count := 1
+    alert("📢 空單進場 - 價格突破上軌", alert.freq_once_per_bar)
+
+if (can_add_short and strategy.position_size < 0 and entry_count == 1)
+    strategy.entry("ShortAdd", strategy.short, qty=add_qty)
+    avg_entry := (avg_entry * entry_count + close) / (entry_count + 1)
+    entry_count := 2
+    alert("📢 空單加碼", alert.freq_once_per_bar)
+
+// === 出場條件（固定停利 + 追蹤止損） === //
+if (strategy.position_size > 0 and close >= avg_entry + take_profit)
+    strategy.close("TP Long", qty_percent=100)
+    alert("✅ 多單固定停利", alert.freq_once_per_bar)
+
+if (strategy.position_size < 0 and close <= avg_entry - take_profit)
+    strategy.close("TP Short", qty_percent=100)
+    alert("✅ 空單固定停利", alert.freq_once_per_bar)
+
+if (strategy.position_size > 0)
+    strategy.exit("Exit Long", from_entry="Long", trail_offset=trail_offset, trail_points=trail_offset)
+
+if (strategy.position_size < 0)
+    strategy.exit("Exit Short", from_entry="Short", trail_offset=trail_offset, trail_points=trail_offset)
+
+// === 畫出通道 === //
+plot(basis, color=color.gray, title="BOLL 中軸")
+plot(upper, color=color.red, title="BOLL 上軌")
+plot(lower, color=color.green, title="BOLL 下軌")
+
+// === 平倉後重置 === //
+if (strategy.position_size == 0)
+    avg_entry := na
+    entry_count := 0
